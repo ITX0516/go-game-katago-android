@@ -8,75 +8,73 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-katago:
-    name: Build KataGo for Android
+  extract-katago:
+    name: Extract KataGo from BadukAI APK
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-        with:
-          repository: lightvector/KataGo
-          ref: v1.16.5
-          path: katago-src
 
-      - name: Install system dependencies
+      - name: Install tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            git zip unzip cmake build-essential \
-            wget curl pkg-config libeigen3-dev
+          sudo apt-get install -y unzip wget
 
-      - name: Install Android NDK
+      - name: Download BadukAI APK
         run: |
-          export ANDROID_NDK_VERSION=r25b
-          export ANDROID_NDK_HOME=$HOME/android-ndk
-          wget -q https://dl.google.com/android/repository/android-ndk-${ANDROID_NDK_VERSION}-linux.zip
-          unzip -q android-ndk-${ANDROID_NDK_VERSION}-linux.zip -d $HOME/
-          mv $HOME/android-ndk-${ANDROID_NDK_VERSION} $ANDROID_NDK_HOME
-          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> $GITHUB_ENV
+          wget -q -O badukai.apk \
+            "https://github.com/aki65/aki65.github.io/releases/download/v1.23.0/baduk_ai__arm64-v8a-rel-1.23.apk"
+          ls -lh badukai.apk
 
-      - name: Download Eigen3 headers
+      - name: Extract KataGo binary from APK
         run: |
-          wget -q https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz
-          tar xzf eigen-3.4.0.tar.gz
-          ls eigen-3.4.0/
-          echo "EIGEN3_DIR=$PWD/eigen-3.4.0" >> $GITHUB_ENV
+          mkdir -p katago-extract
+          cd katago-extract
+          unzip ../badukai.apk -d . 2>&1 | head -30
+          echo "--- lib/arm64_v8a files:"
+          ls -la lib/arm64_v8a/ 2>/dev/null || ls -la lib/ 2>/dev/null || echo "no lib dir"
+          echo "--- assets files:"
+          find assets -type f 2>/dev/null | head -30 || echo "no assets"
+          echo "--- all .so files:"
+          find . -name "*.so" -type f 2>/dev/null | head -20
+          echo "--- searching for katago:"
+          find . -iname "*katago*" -type f 2>/dev/null | head -20
+          find . -iname "*kata*" -type f 2>/dev/null | head -20
 
-      - name: Build KataGo (arm64-v8a, CPU/Eigen)
-        run: |
-          cd katago-src/cpp
-          export ANDROID_NDK_HOME=$HOME/android-ndk
-          export TOOLCHAIN=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake
-          mkdir -p build-android-arm64
-          cd build-android-arm64
-          cmake .. \
-            -DCMAKE_TOOLCHAIN_FILE=$TOOLCHAIN \
-            -DANDROID_ABI=arm64-v8a \
-            -DANDROID_PLATFORM=android-24 \
-            -DANDROID_STL=c++_shared \
-            -DUSE_BACKEND=EIGEN \
-            -DNO_GIT_REVISION=1 \
-            -DBUILD_SHARED_LIBS=OFF \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DEigen3_DIR=$EIGEN3_DIR/cmake \
-            -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH \
-            -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH \
-            -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER
-          make -j$(nproc) katago 2>&1 | tail -100
-
-      - name: Collect binaries
+      - name: Find and extract KataGo
         run: |
           mkdir -p katago-output
-          cp katago-src/cpp/build-android-arm64/katago katago-output/katago
-          chmod +x katago-output/katago
-          file katago-output/katago
+          # Try to find katago binary or library
+          if [ -f katago-extract/lib/arm64_v8a/libkatago.so ]; then
+            cp katago-extract/lib/arm64_v8a/libkatago.so katago-output/katago
+            echo "Found libkatago.so"
+          elif [ -f katago-extract/lib/arm64-v8a/libkatago.so ]; then
+            cp katago-extract/lib/arm64-v8a/libkatago.so katago-output/katago
+            echo "Found libkatago.so"
+          else
+            find katago-extract -name "*katago*" -o -name "*kata*" | head -20
+            echo "Could not find katago, listing all executables..."
+            find katago-extract -type f -executable | head -20
+          fi
           ls -lh katago-output/
 
-      - name: Upload KataGo binary
+      - name: List APK structure
+        run: |
+          cd katago-extract
+          echo "=== APK structure (top 50 files):"
+          find . -type f | head -50
+          echo ""
+          echo "=== assets dir:"
+          find assets -type f 2>/dev/null | head -30
+          echo ""
+          echo "=== lib dir:"
+          find lib -type f 2>/dev/null | head -30
+
+      - name: Upload extracted katago binary
         uses: actions/upload-artifact@v4
         with:
           name: katago-android-arm64
-          path: katago-output/katago
+          path: katago-output/
 
   download-model:
     name: Download KataGo Model
@@ -109,7 +107,7 @@ jobs:
 
   build-apk:
     name: Build Android APK
-    needs: [build-katago, download-model]
+    needs: [extract-katago, download-model]
     runs-on: ubuntu-latest
     timeout-minutes: 360
     steps:
@@ -129,7 +127,7 @@ jobs:
 
       - name: Prepare assets
         run: |
-          chmod +x assets/katago/katago
+          chmod +x assets/katago/katago 2>/dev/null || true
           ls -lh assets/katago/
 
       - name: Set up JDK 17
