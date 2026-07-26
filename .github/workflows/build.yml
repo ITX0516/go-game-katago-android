@@ -218,10 +218,10 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.10'
 
       - name: Install system dependencies
         run: |
@@ -238,7 +238,8 @@ jobs:
       - name: Install Buildozer and Cython
         run: |
           python -m pip install --upgrade pip
-          pip install buildozer cython==0.29.37
+          python -m pip install buildozer python-for-android cython
+          python -m pip list | grep -i "buildozer\|cython\|kivy\|python-for-android"
 
       - name: Cache Buildozer global directory
         uses: actions/cache@v4
