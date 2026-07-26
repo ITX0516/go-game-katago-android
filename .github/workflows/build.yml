@@ -34,47 +34,47 @@ jobs:
           unzip -q android-ndk-${ANDROID_NDK_VERSION}-linux.zip -d $HOME/
           mv $HOME/android-ndk-${ANDROID_NDK_VERSION} $ANDROID_NDK_HOME
           echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> $GITHUB_ENV
-          echo "TOOLCHAIN=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" >> $GITHUB_ENV
+          echo "TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" >> $GITHUB_ENV
+          echo "SYSROOT=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot" >> $GITHUB_ENV
 
-      - name: Create sysroot prefix
+      - name: Create output prefix
         run: |
-          export PREFIX=$HOME/android-sysroot
-          mkdir -p $PREFIX
+          export PREFIX=$HOME/android-prefix
+          mkdir -p $PREFIX/lib $PREFIX/include
           echo "PREFIX=$PREFIX" >> $GITHUB_ENV
 
-      - name: Build zlib for Android
+      - name: Build zlib (from GitHub mirror)
         run: |
           cd $HOME
-          wget -q https://zlib.net/zlib-1.3.tar.gz
-          tar xzf zlib-1.3.tar.gz
-          cd zlib-1.3
+          git clone --depth 1 --branch v1.3.1 https://github.com/madler/zlib.git zlib
+          cd zlib
           export ANDROID_NDK_HOME=$HOME/android-ndk
-          export TOOLCHAIN=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake
+          export TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake
           mkdir -p build
           cd build
           cmake .. \
-            -DCMAKE_TOOLCHAIN_FILE=$TOOLCHAIN \
+            -DCMAKE_TOOLCHAIN_FILE=$TOOLCHAIN_FILE \
             -DANDROID_ABI=arm64-v8a \
             -DANDROID_PLATFORM=android-24 \
             -DCMAKE_INSTALL_PREFIX=$PREFIX \
             -DCMAKE_BUILD_TYPE=Release
           make -j$(nproc)
           make install
+          echo "--- zlib installed ---"
           ls -la $PREFIX/lib/
           ls -la $PREFIX/include/
 
-      - name: Build libzip for Android
+      - name: Build libzip (from GitHub)
         run: |
           cd $HOME
-          wget -q https://libzip.org/download/libzip-1.10.1.tar.gz
-          tar xzf libzip-1.10.1.tar.gz
-          cd libzip-1.10.1
+          git clone --depth 1 --branch v1.10.1 https://github.com/nih-at/libzip.git libzip
+          cd libzip
           export ANDROID_NDK_HOME=$HOME/android-ndk
-          export TOOLCHAIN=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake
+          export TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake
           mkdir -p build
           cd build
           cmake .. \
-            -DCMAKE_TOOLCHAIN_FILE=$TOOLCHAIN \
+            -DCMAKE_TOOLCHAIN_FILE=$TOOLCHAIN_FILE \
             -DANDROID_ABI=arm64-v8a \
             -DANDROID_PLATFORM=android-24 \
             -DCMAKE_INSTALL_PREFIX=$PREFIX \
@@ -85,28 +85,33 @@ jobs:
             -DENABLE_ZSTD=OFF \
             -DBUILD_SHARED_LIBS=OFF \
             -DBUILD_EXAMPLES=OFF \
-            -DBUILD_DOC=OFF
+            -DBUILD_DOC=OFF \
+            -DBUILD_TOOLS=OFF \
+            -DZLIB_INCLUDE_DIR=$PREFIX/include \
+            -DZLIB_LIBRARY=$PREFIX/lib/libz.a
           make -j$(nproc)
           make install
+          echo "--- libzip installed ---"
           ls -la $PREFIX/lib/
           ls -la $PREFIX/include/
 
-      - name: Download Eigen3 headers
+      - name: Download Eigen3 (from GitLab mirror)
         run: |
           cd $HOME
-          wget -q https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz
-          tar xzf eigen-3.4.0.tar.gz
+          git clone --depth 1 --branch 3.4.0 https://gitlab.com/libeigen/eigen.git eigen-3.4.0
           echo "EIGEN3_DIR=$HOME/eigen-3.4.0" >> $GITHUB_ENV
+          echo "--- Eigen3 ready ---"
+          ls eigen-3.4.0/Eigen/ | head -10
 
-      - name: Build KataGo (arm64-v8a, CPU/Eigen)
+      - name: Build KataGo (arm64-v8a, Eigen CPU)
         run: |
           cd $GITHUB_WORKSPACE/katago-src/cpp
           export ANDROID_NDK_HOME=$HOME/android-ndk
-          export TOOLCHAIN=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake
+          export TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake
           mkdir -p build-android-arm64
           cd build-android-arm64
           cmake .. \
-            -DCMAKE_TOOLCHAIN_FILE=$TOOLCHAIN \
+            -DCMAKE_TOOLCHAIN_FILE=$TOOLCHAIN_FILE \
             -DANDROID_ABI=arm64-v8a \
             -DANDROID_PLATFORM=android-24 \
             -DANDROID_STL=c++_shared \
@@ -123,7 +128,7 @@ jobs:
             -DZLIB_LIBRARY=$PREFIX/lib/libz.a \
             -Dzip_INCLUDE_DIR=$PREFIX/include \
             -Dzip_LIBRARY=$PREFIX/lib/libzip.a
-          make -j$(nproc) katago 2>&1 | tail -80
+          make -j$(nproc) katago 2>&1 | tail -100
 
       - name: Verify KataGo binary
         run: |
