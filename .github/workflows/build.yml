@@ -275,11 +275,15 @@ jobs:
       - name: Build APK
         run: |
           export ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk
+          export CFLAGS="-Wno-implicit-function-declaration -Wno-error=implicit-function-declaration -Wno-incompatible-function-pointer-types -Wno-error=incompatible-function-pointer-types"
+          export CXXFLAGS="-Wno-implicit-function-declaration -Wno-error=implicit-function-declaration -Wno-incompatible-function-pointer-types -Wno-error=incompatible-function-pointer-types"
           yes | buildozer android debug 2>&1 | tee build.log
         env:
           ANDROIDSDK: $HOME/.buildozer/android/platform/android-sdk
           BUILDOZER_WARN_ON_ROOT: 1
           GRADLE_OPTS: "-Xmx4096m -XX:MaxMetaspaceSize=512m"
+          CFLAGS: "-Wno-implicit-function-declaration -Wno-error=implicit-function-declaration -Wno-incompatible-function-pointer-types -Wno-error=incompatible-function-pointer-types"
+          CXXFLAGS: "-Wno-implicit-function-declaration -Wno-error=implicit-function-declaration -Wno-incompatible-function-pointer-types -Wno-error=incompatible-function-pointer-types"
 
       - name: Find APK files
         id: find_apk
