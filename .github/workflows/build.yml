@@ -95,13 +95,20 @@ jobs:
           ls -la $PREFIX/lib/
           ls -la $PREFIX/include/
 
-      - name: Download Eigen3 (from GitLab mirror)
+      - name: Build and install Eigen3
         run: |
           cd $HOME
           git clone --depth 1 --branch 3.4.0 https://gitlab.com/libeigen/eigen.git eigen-3.4.0
-          echo "EIGEN3_DIR=$HOME/eigen-3.4.0" >> $GITHUB_ENV
-          echo "--- Eigen3 ready ---"
-          ls eigen-3.4.0/Eigen/ | head -10
+          cd eigen-3.4.0
+          mkdir -p build
+          cd build
+          cmake .. \
+            -DCMAKE_INSTALL_PREFIX=$PREFIX \
+            -DCMAKE_BUILD_TYPE=Release
+          make install
+          echo "--- Eigen3 installed ---"
+          ls $PREFIX/include/eigen3/Eigen/ | head -10
+          ls $PREFIX/share/eigen3/cmake/ | head -10
 
       - name: Build KataGo (arm64-v8a, Eigen CPU)
         run: |
@@ -119,8 +126,8 @@ jobs:
             -DNO_GIT_REVISION=1 \
             -DBUILD_SHARED_LIBS=OFF \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PREFIX_PATH="$PREFIX;$EIGEN3_DIR/cmake" \
-            -DCMAKE_FIND_ROOT_PATH="$PREFIX;$EIGEN3_DIR" \
+            -DCMAKE_PREFIX_PATH="$PREFIX;$PREFIX/share/eigen3/cmake" \
+            -DCMAKE_FIND_ROOT_PATH="$PREFIX" \
             -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH \
             -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH \
             -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
