@@ -126,8 +126,8 @@ jobs:
             -DNO_GIT_REVISION=1 \
             -DBUILD_SHARED_LIBS=OFF \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_CXX_FLAGS="-Wno-cast-align -Wno-error=cast-align" \
-            -DCMAKE_C_FLAGS="-Wno-cast-align -Wno-error=cast-align" \
+            -DCMAKE_CXX_FLAGS="-Wno-cast-align -Wno-error=cast-align -DBYTE_ORDER=1234 -DLITTLE_ENDIAN=1234 -DBIG_ENDIAN=4321" \
+            -DCMAKE_C_FLAGS="-Wno-cast-align -Wno-error=cast-align -DBYTE_ORDER=1234 -DLITTLE_ENDIAN=1234 -DBIG_ENDIAN=4321" \
             -DCMAKE_PREFIX_PATH="$PREFIX;$PREFIX/share/eigen3/cmake" \
             -DCMAKE_FIND_ROOT_PATH="$PREFIX" \
             -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH \
