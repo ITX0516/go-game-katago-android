@@ -4,10 +4,10 @@ package.name = gogame
 package.domain = org.example.gogame
 
 source.dir = .
-source.include_exts = py,png,jpg,kv,atlas,cfg,bin.gz,txt.gz,json
-source.include_patterns = assets/*,images/*.png
+source.include_exts = py,png,jpg,kv,atlas,cfg,bin.gz,txt.gz,json,txt
+source.include_patterns = assets/*,images/*.png,data/*
 source.exclude_exts = spec
-source.exclude_dirs = tests, bin, .buildozer, .git
+source.exclude_dirs = tests, bin, .buildozer, .git, __pycache__
 
 version = 1.0
 requirements = python3,kivy==2.3.0

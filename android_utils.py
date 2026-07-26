@@ -4,23 +4,50 @@ import shutil
 
 
 def is_android():
+    try:
+        from jnius import autoclass
+        return True
+    except ImportError:
+        pass
     return 'ANDROID_ARGUMENT' in os.environ or hasattr(sys, 'getandroidapilevel')
 
 
 def get_app_dir():
     if is_android():
-        from android.storage import app_storage_path
-        return app_storage_path()
+        try:
+            from jnius import autoclass
+            Context = autoclass('android.content.Context')
+            PythonActivity = autoclass('org.kivy.android.PythonActivity')
+            activity = PythonActivity.mActivity
+            files_dir = activity.getFilesDir().getAbsolutePath()
+            return files_dir
+        except Exception:
+            pass
+        try:
+            from android.storage import app_storage_path
+            return app_storage_path()
+        except Exception:
+            pass
     return os.path.dirname(os.path.abspath(__file__))
 
 
-def get_files_dir():
+def get_external_dir():
     if is_android():
-        from android.storage import primary_external_storage_path
         try:
+            from jnius import autoclass
+            Context = autoclass('android.content.Context')
+            PythonActivity = autoclass('org.kivy.android.PythonActivity')
+            activity = PythonActivity.mActivity
+            ext_dir = activity.getExternalFilesDir(None)
+            if ext_dir:
+                return ext_dir.getAbsolutePath()
+        except Exception:
+            pass
+        try:
+            from android.storage import primary_external_storage_path
             return primary_external_storage_path()
         except Exception:
-            return get_app_dir()
+            pass
     return os.path.dirname(os.path.abspath(__file__))
 
 
@@ -32,38 +59,11 @@ def get_katago_dir():
     return katago_dir
 
 
-def get_katago_executable_path():
-    katago_dir = get_katago_dir()
-    candidates = [
-        os.path.join(katago_dir, 'katago'),
-        os.path.join(katago_dir, 'katago-arm64'),
-        os.path.join(katago_dir, 'katago-android'),
-        '/data/local/tmp/katago',
-    ]
-    for path in candidates:
-        if os.path.exists(path):
-            try:
-                os.chmod(path, 0o755)
-            except Exception:
-                pass
-            return path
-    return ''
-
-
-def get_default_model_path():
-    katago_dir = get_katago_dir()
-    for f in os.listdir(katago_dir) if os.path.exists(katago_dir) else []:
-        if f.endswith('.bin.gz') or f.endswith('.txt.gz'):
-            return os.path.join(katago_dir, f)
-    return ''
-
-
-def get_default_config_path():
-    katago_dir = get_katago_dir()
-    config_path = os.path.join(katago_dir, 'default_gtp.cfg')
-    if os.path.exists(config_path):
-        return config_path
-    return ''
+def get_assets_dir():
+    if is_android():
+        return '/data/data/org.example.gogame/files/app/assets/katago'
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(script_dir, 'assets', 'katago')
 
 
 def ensure_executable(path):
@@ -77,18 +77,77 @@ def ensure_executable(path):
     return False
 
 
-def copy_assets_to_app_dir(asset_dir, target_dir=None):
-    if target_dir is None:
-        target_dir = get_katago_dir()
-    if not os.path.exists(asset_dir):
-        return False
+def copy_assets_katago():
+    assets_dir = get_assets_dir()
+    target_dir = get_katago_dir()
+    if not os.path.exists(assets_dir):
+        return False, f'Assets directory not found: {assets_dir}'
     os.makedirs(target_dir, exist_ok=True)
-    for item in os.listdir(asset_dir):
-        src = os.path.join(asset_dir, item)
-        dst = os.path.join(target_dir, item)
-        if os.path.isfile(src):
-            if not os.path.exists(dst) or os.path.getmtime(src) > os.path.getmtime(dst):
-                shutil.copy2(src, dst)
-                if item.startswith('katago'):
+    copied = 0
+    try:
+        for item in os.listdir(assets_dir):
+            src = os.path.join(assets_dir, item)
+            dst = os.path.join(target_dir, item)
+            if os.path.isfile(src):
+                if not os.path.exists(dst) or os.path.getmtime(src) > os.path.getmtime(dst):
+                    shutil.copy2(src, dst)
+                    copied += 1
+                if item.startswith('katago') and not item.endswith('.cfg') and not item.endswith('.gz'):
                     ensure_executable(dst)
-    return True
+    except Exception as e:
+        return False, str(e)
+    return True, f'Copied {copied} files'
+
+
+def find_katago_executable():
+    katago_dir = get_katago_dir()
+    candidates = []
+    if os.path.exists(katago_dir):
+        for f in sorted(os.listdir(katago_dir)):
+            if f == 'README.txt' or f.endswith('.cfg') or f.endswith('.gz'):
+                continue
+            full = os.path.join(katago_dir, f)
+            if os.path.isfile(full):
+                candidates.append(full)
+    extra_paths = [
+        '/data/local/tmp/katago',
+        '/system/bin/katago',
+    ]
+    for p in extra_paths:
+        if os.path.exists(p):
+            candidates.append(p)
+    for path in candidates:
+        ensure_executable(path)
+    return candidates[0] if candidates else ''
+
+
+def find_model_file():
+    katago_dir = get_katago_dir()
+    if not os.path.exists(katago_dir):
+        return ''
+    for f in sorted(os.listdir(katago_dir)):
+        if f.endswith('.bin.gz') or f.endswith('.txt.gz'):
+            return os.path.join(katago_dir, f)
+    return ''
+
+
+def find_config_file():
+    katago_dir = get_katago_dir()
+    if not os.path.exists(katago_dir):
+        return ''
+    for f in sorted(os.listdir(katago_dir)):
+        if f.endswith('.cfg') or f.endswith('.toml'):
+            return os.path.join(katago_dir, f)
+    default = os.path.join(katago_dir, 'default_gtp.cfg')
+    if os.path.exists(default):
+        return default
+    return ''
+
+
+def auto_detect_paths():
+    copy_assets_katago()
+    return {
+        'katago_path': find_katago_executable(),
+        'model_path': find_model_file(),
+        'config_path': find_config_file(),
+    }

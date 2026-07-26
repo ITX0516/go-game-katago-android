@@ -17,6 +17,7 @@ import os
 from go_board import GoBoard, BLACK, WHITE, EMPTY
 from katago_engine import KataGoEngine
 from config import Config
+import android_utils
 
 
 class BoardWidget(Widget):
@@ -197,6 +198,7 @@ class GoGameApp(App):
     def __init__(self, **kwargs):
         super(GoGameApp, self).__init__(**kwargs)
         self.config = Config()
+        self._auto_detect_katago()
         self.board = GoBoard(
             size=self.config.get('board_size', 19),
             komi=self.config.get('komi', 6.5)
@@ -209,6 +211,23 @@ class GoGameApp(App):
         self.board_widget = None
         self.status_label = None
         self.info_label = None
+
+    def _auto_detect_katago(self):
+        current_path = self.config.get('katago_path', '')
+        if current_path and os.path.exists(current_path):
+            return
+        try:
+            paths = android_utils.auto_detect_paths()
+            if paths['katago_path'] and not current_path:
+                self.config.set('katago_path', paths['katago_path'])
+            if paths['model_path'] and not self.config.get('model_path', ''):
+                self.config.set('model_path', paths['model_path'])
+            if paths['config_path'] and not self.config.get('config_path', ''):
+                self.config.set('config_path', paths['config_path'])
+            if paths['katago_path']:
+                self.config.save()
+        except Exception:
+            pass
 
     def build(self):
         Window.clearcolor = get_color_from_hex('#F5F5F5')
@@ -676,6 +695,13 @@ class SettingsPopup(Popup):
         )
         content.add_widget(Label(text='模型路径:', halign='left', size_hint_y=None, height=dp(20)))
         content.add_widget(self.model_path_input)
+        detect_btn = Button(
+            text='🔍 自动检测 Katago',
+            size_hint_y=None,
+            height=dp(40),
+            on_press=self._auto_detect,
+        )
+        content.add_widget(detect_btn)
         size_box = BoxLayout(size_hint_y=None, height=dp(40), spacing=dp(10))
         size_box.add_widget(Label(text='棋盘大小:', size_hint_x=None, width=dp(80)))
         self.size_spinner = Spinner(
@@ -709,6 +735,33 @@ class SettingsPopup(Popup):
         btn_box.add_widget(ok_btn)
         content.add_widget(btn_box)
         self.content = content
+
+    def _auto_detect(self, *args):
+        try:
+            paths = android_utils.auto_detect_paths()
+            if paths['katago_path']:
+                self.katago_path_input.text = paths['katago_path']
+            if paths['model_path']:
+                self.model_path_input.text = paths['model_path']
+            if paths['config_path']:
+                self.config_path_input.text = paths['config_path']
+            if not paths['katago_path']:
+                self._show_toast('未找到 Katago，请手动填写路径')
+            else:
+                self._show_toast('检测成功！')
+        except Exception as e:
+            self._show_toast(f'检测失败: {e}')
+
+    def _show_toast(self, msg):
+        from kivy.uix.label import Label
+        from kivy.uix.popup import Popup
+        from kivy.uix.boxlayout import BoxLayout
+        from kivy.clock import Clock
+        content = BoxLayout(padding=dp(20))
+        content.add_widget(Label(text=msg))
+        toast = Popup(title='提示', content=content, size_hint=(0.7, 0.2), auto_dismiss=True)
+        toast.open()
+        Clock.schedule_once(lambda dt: toast.dismiss(), 2)
 
     def _save(self, *args):
         self.config.set('katago_path', self.katago_path_input.text.strip())
