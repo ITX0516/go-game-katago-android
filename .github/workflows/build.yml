@@ -126,6 +126,8 @@ jobs:
             -DNO_GIT_REVISION=1 \
             -DBUILD_SHARED_LIBS=OFF \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_FLAGS="-Wno-cast-align -Wno-error=cast-align" \
+            -DCMAKE_C_FLAGS="-Wno-cast-align -Wno-error=cast-align" \
             -DCMAKE_PREFIX_PATH="$PREFIX;$PREFIX/share/eigen3/cmake" \
             -DCMAKE_FIND_ROOT_PATH="$PREFIX" \
             -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH \
@@ -135,7 +137,7 @@ jobs:
             -DZLIB_LIBRARY=$PREFIX/lib/libz.a \
             -Dzip_INCLUDE_DIR=$PREFIX/include \
             -Dzip_LIBRARY=$PREFIX/lib/libzip.a
-          make -j$(nproc) katago 2>&1 | tail -100
+          make -j$(nproc) katago 2>&1 | tail -150
 
       - name: Verify KataGo binary
         run: |
@@ -159,10 +161,18 @@ jobs:
       - name: Download lightweight model (b10c128, ~12MB)
         run: |
           mkdir -p model-output
-          curl -L -o model-output/model.bin.gz \
-            "https://media.katagotraining.org/uploaded/networks/models/kata1/kata1-b10c128-s1141046784-d204142634.bin.gz"
+          curl -L --retry 3 --retry-delay 5 -o model-output/model.bin.gz \
+            "https://katagotraining.org/api/networks/kata1-b10c128-s1141046784-d204142634/network_file"
           ls -lh model-output/
           echo "model_size=$(du -h model-output/model.bin.gz | cut -f1)"
+          FILE_SIZE=$(stat -c%s model-output/model.bin.gz)
+          echo "File size: $FILE_SIZE bytes"
+          if [ "$FILE_SIZE" -lt 1000000 ]; then
+            echo "ERROR: Model file too small ($FILE_SIZE bytes), download likely failed"
+            echo "File content:"
+            head -c 500 model-output/model.bin.gz
+            exit 1
+          fi
 
       - name: Create default config
         run: |
