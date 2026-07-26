@@ -12,8 +12,6 @@ jobs:
     name: Build KataGo for Android
     runs-on: ubuntu-latest
     timeout-minutes: 120
-    outputs:
-      katago_binary: ${{ steps.upload.outputs.artifact_name }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -21,18 +19,12 @@ jobs:
           ref: v1.16.5
           path: katago-src
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
       - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             git zip unzip cmake build-essential \
-            wget curl pkg-config
+            wget curl pkg-config libeigen3-dev
 
       - name: Install Android NDK
         run: |
@@ -42,6 +34,13 @@ jobs:
           unzip -q android-ndk-${ANDROID_NDK_VERSION}-linux.zip -d $HOME/
           mv $HOME/android-ndk-${ANDROID_NDK_VERSION} $ANDROID_NDK_HOME
           echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> $GITHUB_ENV
+
+      - name: Download Eigen3 headers
+        run: |
+          wget -q https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz
+          tar xzf eigen-3.4.0.tar.gz
+          ls eigen-3.4.0/
+          echo "EIGEN3_DIR=$PWD/eigen-3.4.0" >> $GITHUB_ENV
 
       - name: Build KataGo (arm64-v8a, CPU/Eigen)
         run: |
@@ -56,23 +55,24 @@ jobs:
             -DANDROID_PLATFORM=android-24 \
             -DANDROID_STL=c++_shared \
             -DUSE_BACKEND=EIGEN \
-            -DUSE_GIT_VERSION=OFF \
+            -DNO_GIT_REVISION=1 \
             -DBUILD_SHARED_LIBS=OFF \
-            -DCMAKE_BUILD_TYPE=Release
-          make -j$(nproc) katago
+            -DCMAKE_BUILD_TYPE=Release \
+            -DEigen3_DIR=$EIGEN3_DIR/cmake \
+            -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH \
+            -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH \
+            -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER
+          make -j$(nproc) katago 2>&1 | tail -100
 
       - name: Collect binaries
-        id: collect
         run: |
           mkdir -p katago-output
           cp katago-src/cpp/build-android-arm64/katago katago-output/katago
           chmod +x katago-output/katago
           file katago-output/katago
           ls -lh katago-output/
-          echo "binary_path=katago-output/katago" >> $GITHUB_OUTPUT
 
       - name: Upload KataGo binary
-        id: upload
         uses: actions/upload-artifact@v4
         with:
           name: katago-android-arm64
@@ -82,14 +82,12 @@ jobs:
     name: Download KataGo Model
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    outputs:
-      model_file: ${{ steps.upload.outputs.artifact_name }}
     steps:
-      - name: Download lightweight model (b15c192)
+      - name: Download lightweight model (b10c128, ~12MB)
         run: |
           mkdir -p model-output
-          wget -q -O model-output/model.bin.gz \
-            "https://media.katagotraining.org/uploaded/networks/models/kata1/kata1-b15c192nbt-s4972650496-d1136280277.bin.gz"
+          curl -L -o model-output/model.bin.gz \
+            "https://media.katagotraining.org/uploaded/networks/models/kata1/kata1-b10c128-s1141046784-d204142634.bin.gz"
           ls -lh model-output/
           echo "model_size=$(du -h model-output/model.bin.gz | cut -f1)"
 
@@ -104,7 +102,6 @@ jobs:
           ls -lh model-output/
 
       - name: Upload model and config
-        id: upload
         uses: actions/upload-artifact@v4
         with:
           name: katago-model-config
