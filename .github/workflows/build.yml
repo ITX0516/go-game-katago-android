@@ -227,12 +227,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            git zip unzip autoconf libtool pkg-config \
+            git zip unzip autoconf libtool libltdl-dev pkg-config \
             zlib1g-dev libncurses5-dev libncursesw5-dev \
             cmake libffi-dev libssl-dev \
             build-essential libsqlite3-dev \
             wget curl automake openjdk-17-jdk
           sudo apt-get install -y libtinfo5 2>/dev/null || true
+          which libtoolize || sudo apt-get install -y libtool-bin || true
 
       - name: Install Buildozer and Cython
         run: |
