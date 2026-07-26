@@ -249,16 +249,33 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-buildozer-
 
+      - name: Setup Android SDK and accept licenses
+        run: |
+          export ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk
+          mkdir -p $ANDROID_HOME/cmdline-tools
+          cd $ANDROID_HOME/cmdline-tools
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
+          unzip -q cmdline-tools.zip
+          mv cmdline-tools latest
+          rm cmdline-tools.zip
+          mkdir -p $ANDROID_HOME/licenses
+          echo -e "\n24333f8a63b6825ea9c5514f83c2829b004d1fee" > $ANDROID_HOME/licenses/android-sdk-license
+          echo -e "\n84831b9409646a918e30573bab4c9c91346d8abd" > $ANDROID_HOME/licenses/android-sdk-preview-license
+          echo -e "\nd975f751698a77b662f1254ddbeed3901e976f5a" > $ANDROID_HOME/licenses/intel-android-extra-license
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_HOME --licenses || true
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_HOME "platform-tools" "build-tools;33.0.1" "platforms;android-33" || true
+          mkdir -p $ANDROID_HOME/tools/bin
+          ln -sf $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager $ANDROID_HOME/tools/bin/sdkmanager || true
+          ln -sf $ANDROID_HOME/cmdline-tools/latest/bin/avdmanager $ANDROID_HOME/tools/bin/avdmanager || true
+          ls -la $ANDROID_HOME/
+          ls -la $ANDROID_HOME/tools/bin/
+
       - name: Build APK
         run: |
-          mkdir -p $HOME/.buildozer/android/platform/android-sdk/licenses
-          echo -e "\n24333f8a63b6825ea9c5514f83c2829b004d1fee" > $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
-          echo -e "\n84831b9409646a918e30573bab4c9c91346d8abd" > $HOME/.buildozer/android/platform/android-sdk/licenses/android-sdk-preview-license
-          echo -e "\nd975f751698a77b662f1254ddbeed3901e976f5a" > $HOME/.buildozer/android/platform/android-sdk/licenses/intel-android-extra-license
+          export ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk
           yes | buildozer android debug 2>&1 | tee build.log
         env:
           ANDROIDSDK: $HOME/.buildozer/android/platform/android-sdk
-          ANDROIDNDK: $HOME/.buildozer/android/platform/android-ndk-r25b
           BUILDOZER_WARN_ON_ROOT: 1
           GRADLE_OPTS: "-Xmx4096m -XX:MaxMetaspaceSize=512m"
 
