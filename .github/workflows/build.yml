@@ -8,11 +8,132 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-katago:
+    name: Build KataGo for Android
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    outputs:
+      katago_binary: ${{ steps.upload.outputs.artifact_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: lightvector/KataGo
+          ref: v1.16.5
+          path: katago-src
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            git zip unzip cmake build-essential \
+            wget curl pkg-config
+
+      - name: Install Android NDK
+        run: |
+          export ANDROID_NDK_VERSION=r25b
+          export ANDROID_NDK_HOME=$HOME/android-ndk
+          wget -q https://dl.google.com/android/repository/android-ndk-${ANDROID_NDK_VERSION}-linux.zip
+          unzip -q android-ndk-${ANDROID_NDK_VERSION}-linux.zip -d $HOME/
+          mv $HOME/android-ndk-${ANDROID_NDK_VERSION} $ANDROID_NDK_HOME
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> $GITHUB_ENV
+
+      - name: Build KataGo (arm64-v8a, CPU/Eigen)
+        run: |
+          cd katago-src/cpp
+          export ANDROID_NDK_HOME=$HOME/android-ndk
+          export TOOLCHAIN=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake
+          mkdir -p build-android-arm64
+          cd build-android-arm64
+          cmake .. \
+            -DCMAKE_TOOLCHAIN_FILE=$TOOLCHAIN \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-24 \
+            -DANDROID_STL=c++_shared \
+            -DUSE_BACKEND=EIGEN \
+            -DUSE_GIT_VERSION=OFF \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DCMAKE_BUILD_TYPE=Release
+          make -j$(nproc) katago
+
+      - name: Collect binaries
+        id: collect
+        run: |
+          mkdir -p katago-output
+          cp katago-src/cpp/build-android-arm64/katago katago-output/katago
+          chmod +x katago-output/katago
+          file katago-output/katago
+          ls -lh katago-output/
+          echo "binary_path=katago-output/katago" >> $GITHUB_OUTPUT
+
+      - name: Upload KataGo binary
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: katago-android-arm64
+          path: katago-output/katago
+
+  download-model:
+    name: Download KataGo Model
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      model_file: ${{ steps.upload.outputs.artifact_name }}
+    steps:
+      - name: Download lightweight model (b15c192)
+        run: |
+          mkdir -p model-output
+          wget -q -O model-output/model.bin.gz \
+            "https://media.katagotraining.org/uploaded/networks/models/kata1/kata1-b15c192nbt-s4972650496-d1136280277.bin.gz"
+          ls -lh model-output/
+          echo "model_size=$(du -h model-output/model.bin.gz | cut -f1)"
+
+      - name: Create default config
+        run: |
+          cat > model-output/default_gtp.cfg << 'EOF'
+          numSearchThreads = 4
+          maxVisits = 200
+          maxTime = 5.0
+          analysisPVLen = 12
+          EOF
+          ls -lh model-output/
+
+      - name: Upload model and config
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: katago-model-config
+          path: model-output/
+
+  build-apk:
+    name: Build Android APK
+    needs: [build-katago, download-model]
     runs-on: ubuntu-latest
     timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download KataGo binary
+        uses: actions/download-artifact@v4
+        with:
+          name: katago-android-arm64
+          path: assets/katago/
+
+      - name: Download model and config
+        uses: actions/download-artifact@v4
+        with:
+          name: katago-model-config
+          path: assets/katago/
+
+      - name: Prepare assets
+        run: |
+          chmod +x assets/katago/katago
+          ls -lh assets/katago/
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -66,7 +187,12 @@ jobs:
           echo "APK files found:"
           ls -la bin/*.apk 2>/dev/null || echo "No APK found in bin/"
           find . -name "*.apk" -type f 2>/dev/null
-          echo "apk_path=$(ls bin/*.apk 2>/dev/null | head -1)" >> $GITHUB_OUTPUT
+          APK_PATH=$(ls bin/*.apk 2>/dev/null | head -1)
+          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
+          if [ -n "$APK_PATH" ]; then
+            APK_SIZE=$(du -h "$APK_PATH" | cut -f1)
+            echo "apk_size=$APK_SIZE" >> $GITHUB_OUTPUT
+          fi
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
