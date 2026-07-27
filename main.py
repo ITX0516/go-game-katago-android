@@ -1,3 +1,39 @@
+import os
+import sys
+import threading
+
+# Font setup - must be before any Kivy imports
+_font_path = None
+def _find_chinese_font():
+    global _font_path
+    if _font_path:
+        return _font_path
+    candidates = [
+        '/system/fonts/NotoSansCJK-Regular.ttc',
+        '/system/fonts/NotoSansSC-Regular.otf',
+        '/system/fonts/DroidSansFallback.ttf',
+        '/system/fonts/NotoSansSC-VF.ttf',
+        '/system/fonts/NotoSansCJK-VF.ttf',
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            _font_path = p
+            return p
+    if os.path.exists('/system/fonts/'):
+        try:
+            for f in sorted(os.listdir('/system/fonts/')):
+                lower = f.lower()
+                if any(k in lower for k in ['cjk', 'sc-', 'sans-sc', 'fallback', 'chinese', 'hei', 'micro']):
+                    p = os.path.join('/system/fonts/', f)
+                    if os.path.isfile(p):
+                        _font_path = p
+                        return p
+        except Exception:
+            pass
+    return None
+
+_chinese_font = _find_chinese_font()
+
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.gridlayout import GridLayout
@@ -12,12 +48,28 @@ from kivy.core.window import Window
 from kivy.clock import Clock
 from kivy.metrics import dp
 from kivy.utils import get_color_from_hex
-import threading
-import os
+from kivy.core.text import LabelBase
 from go_board import GoBoard, BLACK, WHITE, EMPTY
 from katago_engine import KataGoEngine
 from config import Config
 import android_utils
+
+# Monkey-patch Label and Button to use Chinese font on Android
+if _chinese_font:
+    try:
+        _orig_label_init = Label.__init__
+        def _label_init(self, **kwargs):
+            kwargs.setdefault('font_name', _chinese_font)
+            _orig_label_init(self, **kwargs)
+        Label.__init__ = _label_init
+
+        _orig_button_init = Button.__init__
+        def _button_init(self, **kwargs):
+            kwargs.setdefault('font_name', _chinese_font)
+            _orig_button_init(self, **kwargs)
+        Button.__init__ = _button_init
+    except Exception:
+        pass
 
 
 class BoardWidget(Widget):
@@ -80,7 +132,7 @@ class BoardWidget(Widget):
         return px, py
 
     def _pixel_to_coord(self, px, py):
-        if self.cell_size == 0:
+        if self.cell_size == 0 or self.board is None:
             return None
         x = round((py - self.offset_y) / self.cell_size)
         y = round((px - self.offset_x) / self.cell_size)
@@ -218,13 +270,13 @@ class GoGameApp(App):
             return
         try:
             paths = android_utils.auto_detect_paths()
-            if paths['katago_path'] and not current_path:
+            if paths.get('katago_path') and not current_path:
                 self.config.set('katago_path', paths['katago_path'])
-            if paths['model_path'] and not self.config.get('model_path', ''):
+            if paths.get('model_path') and not self.config.get('model_path', ''):
                 self.config.set('model_path', paths['model_path'])
-            if paths['config_path'] and not self.config.get('config_path', ''):
+            if paths.get('config_path') and not self.config.get('config_path', ''):
                 self.config.set('config_path', paths['config_path'])
-            if paths['katago_path']:
+            if paths.get('katago_path'):
                 self.config.save()
         except Exception:
             pass
@@ -476,6 +528,9 @@ class GoGameApp(App):
             if self.board.game_over:
                 self._show_game_result()
             return
+        if result is None or not isinstance(result, tuple) or len(result) != 2:
+            self._show_message('AI错误', f'AI返回了无效结果: {result}')
+            return
         x, y = result
         success, captured = self.board.play_move(x, y)
         if not success:
@@ -651,13 +706,16 @@ class GoGameApp(App):
             self.status_label.text = '未连接AI'
 
     def _show_message(self, title, message):
-        content = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(10))
-        content.add_widget(Label(text=message))
-        btn = Button(text='确定', size_hint_y=None, height=dp(40),
-                     on_press=lambda b: popup.dismiss())
-        content.add_widget(btn)
-        popup = Popup(title=title, content=content, size_hint=(0.85, 0.5))
-        popup.open()
+        try:
+            content = BoxLayout(orientation='vertical', padding=dp(20), spacing=dp(10))
+            content.add_widget(Label(text=str(message)))
+            popup = Popup(title=str(title), content=content, size_hint=(0.85, 0.5))
+            btn = Button(text='确定', size_hint_y=None, height=dp(40),
+                         on_press=lambda b: popup.dismiss())
+            content.add_widget(btn)
+            popup.open()
+        except Exception:
+            pass
 
 
 class SettingsPopup(Popup):

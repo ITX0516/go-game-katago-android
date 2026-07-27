@@ -27,7 +27,7 @@ class KataGoEngine:
     def is_available(self):
         if not self.katago_path:
             return False
-        return os.path.exists(self.katago_path)
+        return os.path.isfile(self.katago_path)
 
     def start(self):
         if self.running:
