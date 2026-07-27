@@ -554,11 +554,16 @@ class GoGameApp(App):
 
     def _connect_engine(self):
         katago_path = self.game_config.get('katago_path', '')
+        self._debug_log(f"Connect engine: katago_path={katago_path}")
         if not katago_path:
             self._show_message('提示', '请先在设置中配置Katago路径')
             return
         if not os.path.isfile(katago_path):
             self._show_message('错误', f'Katago文件不存在:\n{katago_path}')
+            return
+        model_path = self.game_config.get('model_path', '')
+        if not model_path or not os.path.exists(model_path):
+            self._show_message('错误', '请先下载并配置权重模型路径')
             return
         self.status_label.text = '正在连接...'
         t = threading.Thread(target=self._connect_engine_thread, daemon=True)
@@ -567,18 +572,37 @@ class GoGameApp(App):
     def _connect_engine_thread(self):
         try:
             katago_path = self.game_config.get('katago_path', '')
+            config_path = self.game_config.get('config_path', '')
+            model_path = self.game_config.get('model_path', '')
+            self._debug_log(f"Starting engine: katago={katago_path}, config={config_path}, model={model_path}")
             engine = KataGoEngine(
                 katago_path=katago_path,
-                config_path=self.game_config.get('config_path', ''),
-                model_path=self.game_config.get('model_path', ''),
+                config_path=config_path,
+                model_path=model_path,
                 analysis_threads=self.game_config.get('analysis_threads', 2),
                 board_size=self.board.size,
                 komi=self.board.komi,
             )
             engine.start()
             Clock.schedule_once(lambda dt: self._on_engine_connected(engine), 0)
-        except Exception as e:
+        except FileNotFoundError as e:
+            self._debug_log(f"FileNotFoundError: {e}")
             Clock.schedule_once(lambda dt: self._on_engine_connect_failed(str(e)), 0)
+        except RuntimeError as e:
+            self._debug_log(f"RuntimeError: {e}")
+            Clock.schedule_once(lambda dt: self._on_engine_connect_failed(str(e)), 0)
+        except Exception as e:
+            import traceback
+            self._debug_log(f"Unknown error: {e}\n{traceback.format_exc()}")
+            Clock.schedule_once(lambda dt: self._on_engine_connect_failed(f'未知错误: {e}'), 0)
+
+    def _debug_log(self, msg):
+        try:
+            log_path = os.path.join(android_utils.get_external_dir(), 'gogame_debug.log')
+            with open(log_path, 'a', encoding='utf-8') as f:
+                f.write(f'{msg}\n')
+        except Exception:
+            pass
 
     def _on_engine_connected(self, engine):
         self.engine = engine

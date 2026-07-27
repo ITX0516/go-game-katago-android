@@ -34,13 +34,21 @@ class KataGoEngine:
             return True
         if not self.is_available():
             raise FileNotFoundError(f"Katago executable not found: {self.katago_path}")
+        try:
+            st = os.stat(self.katago_path)
+            os.chmod(self.katago_path, st.st_mode | 0o111)
+        except Exception:
+            pass
         args = [self.katago_path, 'gtp']
         if self.config_path and os.path.exists(self.config_path):
             args.extend(['-config', self.config_path])
         if self.model_path and os.path.exists(self.model_path):
             args.extend(['-model', self.model_path])
         args.extend(['-analysis-threads', str(self.analysis_threads)])
+        katago_dir = os.path.dirname(self.katago_path)
         try:
+            env = os.environ.copy()
+            env['LD_LIBRARY_PATH'] = f"{katago_dir}:{env.get('LD_LIBRARY_PATH', '')}"
             self.process = subprocess.Popen(
                 args,
                 stdin=subprocess.PIPE,
@@ -48,6 +56,8 @@ class KataGoEngine:
                 stderr=subprocess.PIPE,
                 text=True,
                 bufsize=1,
+                cwd=katago_dir,
+                env=env,
             )
         except Exception as e:
             raise RuntimeError(f"Failed to start Katago: {e}")
