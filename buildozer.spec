@@ -10,7 +10,7 @@ source.exclude_exts = spec
 source.exclude_dirs = tests, bin, .buildozer, .git, __pycache__
 
 version = 1.0
-requirements = python3,kivy==2.3.0
+requirements = python3,kivy==2.3.1
 
 orientation = portrait
 fullscreen = 0
