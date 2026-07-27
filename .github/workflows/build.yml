@@ -272,17 +272,6 @@ jobs:
           ls -la $ANDROID_HOME/
           ls -la $ANDROID_HOME/tools/bin/
 
-      - name: Pre-install Android NDK r25b (for Kivy 2.3.0 compatibility)
-        run: |
-          export NDK_DIR=$HOME/.buildozer/android/platform/android-ndk-r25b
-          mkdir -p $(dirname $NDK_DIR)
-          cd $(dirname $NDK_DIR)
-          wget -q https://dl.google.com/android/repository/android-ndk-r25b-linux.zip -O ndk.zip
-          unzip -q ndk.zip
-          rm ndk.zip
-          ls -la $NDK_DIR/
-          echo "NDK installed at $NDK_DIR"
-
       - name: Build APK
         run: |
           export ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk
