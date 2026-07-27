@@ -218,35 +218,35 @@ class BoardWidget(Widget):
 class GoGameApp(App):
     def __init__(self, **kwargs):
         super(GoGameApp, self).__init__(**kwargs)
-        self.config = Config()
+        self.game_config = Config()
         self._auto_detect_katago()
         self.board = GoBoard(
-            size=self.config.get('board_size', 19),
-            komi=self.config.get('komi', 6.5)
+            size=self.game_config.get('board_size', 19),
+            komi=self.game_config.get('komi', 6.5)
         )
         self.engine = None
         self.engine_connected = False
         self.thinking = False
-        self.player_color = BLACK if self.config.get('player_color', 'black') == 'black' else WHITE
+        self.player_color = BLACK if self.game_config.get('player_color', 'black') == 'black' else WHITE
         self.ai_color = WHITE if self.player_color == BLACK else BLACK
         self.board_widget = None
         self.status_label = None
         self.info_label = None
 
     def _auto_detect_katago(self):
-        current_path = self.config.get('katago_path', '')
+        current_path = self.game_config.get('katago_path', '')
         if current_path and os.path.exists(current_path):
             return
         try:
             paths = android_utils.auto_detect_paths()
             if paths.get('katago_path') and not current_path:
-                self.config.set('katago_path', paths['katago_path'])
-            if paths.get('model_path') and not self.config.get('model_path', ''):
-                self.config.set('model_path', paths['model_path'])
-            if paths.get('config_path') and not self.config.get('config_path', ''):
-                self.config.set('config_path', paths['config_path'])
+                self.game_config.set('katago_path', paths['katago_path'])
+            if paths.get('model_path') and not self.game_config.get('model_path', ''):
+                self.game_config.set('model_path', paths['model_path'])
+            if paths.get('config_path') and not self.game_config.get('config_path', ''):
+                self.game_config.set('config_path', paths['config_path'])
             if paths.get('katago_path'):
-                self.config.save()
+                self.game_config.save()
         except Exception:
             pass
 
@@ -432,8 +432,8 @@ class GoGameApp(App):
         if popup:
             popup.dismiss()
         self.board = GoBoard(
-            size=self.config.get('board_size', 19),
-            komi=self.config.get('komi', 6.5)
+            size=self.game_config.get('board_size', 19),
+            komi=self.game_config.get('komi', 6.5)
         )
         self.board_widget.set_board(self.board)
         if self.engine_connected:
@@ -470,8 +470,8 @@ class GoGameApp(App):
             popup.dismiss()
         self.player_color = WHITE if self.player_color == BLACK else BLACK
         self.ai_color = BLACK if self.ai_color == WHITE else WHITE
-        self.config.set('player_color', 'black' if self.player_color == BLACK else 'white')
-        self.config.save()
+        self.game_config.set('player_color', 'black' if self.player_color == BLACK else 'white')
+        self.game_config.save()
         self._do_new_game(None)
 
     def _request_ai_move(self):
@@ -553,7 +553,7 @@ class GoGameApp(App):
             self._connect_engine()
 
     def _connect_engine(self):
-        katago_path = self.config.get('katago_path', '')
+        katago_path = self.game_config.get('katago_path', '')
         if not katago_path:
             self._show_message('提示', '请先在设置中配置Katago路径')
             return
@@ -566,12 +566,12 @@ class GoGameApp(App):
 
     def _connect_engine_thread(self):
         try:
-            katago_path = self.config.get('katago_path', '')
+            katago_path = self.game_config.get('katago_path', '')
             engine = KataGoEngine(
                 katago_path=katago_path,
-                config_path=self.config.get('config_path', ''),
-                model_path=self.config.get('model_path', ''),
-                analysis_threads=self.config.get('analysis_threads', 2),
+                config_path=self.game_config.get('config_path', ''),
+                model_path=self.game_config.get('model_path', ''),
+                analysis_threads=self.game_config.get('analysis_threads', 2),
                 board_size=self.board.size,
                 komi=self.board.komi,
             )
@@ -663,13 +663,13 @@ class GoGameApp(App):
         return moves
 
     def show_settings(self, *args):
-        SettingsPopup(self.config, self._on_settings_changed).open()
+        SettingsPopup(self.game_config, self._on_settings_changed).open()
 
     def _on_settings_changed(self):
         if self.engine_connected:
             self._disconnect_engine()
-        new_size = self.config.get('board_size', 19)
-        new_komi = self.config.get('komi', 6.5)
+        new_size = self.game_config.get('board_size', 19)
+        new_komi = self.game_config.get('komi', 6.5)
         if new_size != self.board.size or new_komi != self.board.komi:
             if self.board.move_count > 0:
                 self._show_message('设置变更', '棋盘大小或贴目已变更，新对局将生效')
