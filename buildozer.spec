@@ -4,8 +4,8 @@ package.name = gogame
 package.domain = org.example.gogame
 
 source.dir = .
-source.include_exts = py,png,jpg,kv,atlas,cfg,bin.gz,txt.gz,json,txt
-source.include_patterns = assets/*,images/*.png,data/*
+source.include_exts = py,png,jpg,kv,atlas,cfg,bin,txt.gz,json,txt
+source.include_patterns = assets/*,assets/katago/*,images/*.png,data/*
 source.exclude_exts = spec
 source.exclude_dirs = tests, bin, .buildozer, .git, __pycache__
 

@@ -153,16 +153,16 @@ jobs:
             find $GITHUB_WORKSPACE/katago-src -type f -executable 2>/dev/null | head -20
             exit 1
           fi
-          cp "$KATAGO_BIN" katago-output/katago
-          chmod +x katago-output/katago
-          file katago-output/katago
+          cp "$KATAGO_BIN" katago-output/katago.bin
+          chmod +x katago-output/katago.bin
+          file katago-output/katago.bin
           ls -lh katago-output/
 
       - name: Upload KataGo binary
         uses: actions/upload-artifact@v4
         with:
           name: katago-android-arm64
-          path: katago-output/katago
+          path: katago-output/katago.bin
 
   download-model:
     name: Prepare KataGo Config
@@ -209,7 +209,7 @@ jobs:
 
       - name: Prepare assets
         run: |
-          chmod +x assets/katago/katago 2>/dev/null || true
+          chmod +x assets/katago/katago.bin 2>/dev/null || true
           ls -lh assets/katago/
 
       - name: Set up JDK 17

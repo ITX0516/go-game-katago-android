@@ -2,22 +2,18 @@ import os
 import sys
 import threading
 
-# Font setup - must be before any Kivy imports
-_font_path = None
+# Font setup - MUST be before any Kivy imports
 def _find_chinese_font():
-    global _font_path
-    if _font_path:
-        return _font_path
     candidates = [
         '/system/fonts/NotoSansCJK-Regular.ttc',
         '/system/fonts/NotoSansSC-Regular.otf',
         '/system/fonts/DroidSansFallback.ttf',
         '/system/fonts/NotoSansSC-VF.ttf',
         '/system/fonts/NotoSansCJK-VF.ttf',
+        '/system/fonts/NotoSerifCJK-Regular.ttc',
     ]
     for p in candidates:
         if os.path.exists(p):
-            _font_path = p
             return p
     if os.path.exists('/system/fonts/'):
         try:
@@ -26,13 +22,17 @@ def _find_chinese_font():
                 if any(k in lower for k in ['cjk', 'sc-', 'sans-sc', 'fallback', 'chinese', 'hei', 'micro']):
                     p = os.path.join('/system/fonts/', f)
                     if os.path.isfile(p):
-                        _font_path = p
                         return p
         except Exception:
             pass
     return None
 
 _chinese_font = _find_chinese_font()
+
+# Set default font in Kivy config BEFORE importing any Kivy module
+if _chinese_font:
+    from kivy.config import Config
+    Config.set('kivy', 'default_font', [_chinese_font, _chinese_font, _chinese_font, _chinese_font])
 
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
@@ -48,28 +48,10 @@ from kivy.core.window import Window
 from kivy.clock import Clock
 from kivy.metrics import dp
 from kivy.utils import get_color_from_hex
-from kivy.core.text import LabelBase
 from go_board import GoBoard, BLACK, WHITE, EMPTY
 from katago_engine import KataGoEngine
 from config import Config
 import android_utils
-
-# Monkey-patch Label and Button to use Chinese font on Android
-if _chinese_font:
-    try:
-        _orig_label_init = Label.__init__
-        def _label_init(self, **kwargs):
-            kwargs.setdefault('font_name', _chinese_font)
-            _orig_label_init(self, **kwargs)
-        Label.__init__ = _label_init
-
-        _orig_button_init = Button.__init__
-        def _button_init(self, **kwargs):
-            kwargs.setdefault('font_name', _chinese_font)
-            _orig_button_init(self, **kwargs)
-        Button.__init__ = _button_init
-    except Exception:
-        pass
 
 
 class BoardWidget(Widget):
@@ -171,17 +153,22 @@ class BoardWidget(Widget):
         return super(BoardWidget, self).on_touch_move(touch)
 
     def redraw(self):
-        self.canvas.ask_update()
+        self._draw_board()
 
     def _draw(self, *args):
         pass
 
     def on_size(self, *args):
+        self._draw_board()
+
+    def _draw_board(self, *args):
         self.canvas.before.clear()
         self.canvas.clear()
         if not self.board:
             return
         self._update_geometry()
+        if self.cell_size == 0:
+            return
         with self.canvas.before:
             Color(0.87, 0.72, 0.53, 1)
             Rectangle(pos=self.pos, size=self.size)
@@ -206,24 +193,6 @@ class BoardWidget(Widget):
                 r = self.cell_size * 0.08
                 Color(0.2, 0.2, 0.2, 1)
                 Ellipse(pos=(px - r, py - r), size=(2 * r, 2 * r))
-            if self.show_coordinates:
-                letters = 'ABCDEFGHJKLMNOPQRST'
-                from kivy.core.text import Label as CoreLabel
-                for i in range(size):
-                    px, _ = self._coord_to_pixel(0, i)
-                    label = CoreLabel(text=letters[i], font_size=int(self.cell_size * 0.35), color=(0.2, 0.2, 0.2, 1))
-                    label.refresh()
-                    text = label.texture
-                    self.canvas.add(Color(1, 1, 1, 0))
-                    Rectangle(texture=text, pos=(px - text.size[0] / 2, self.offset_y - dp(18)), size=text.size)
-                for i in range(size):
-                    _, py = self._coord_to_pixel(i, 0)
-                    num = str(size - i)
-                    label = CoreLabel(text=num, font_size=int(self.cell_size * 0.35), color=(0.2, 0.2, 0.2, 1))
-                    label.refresh()
-                    text = label.texture
-                    self.canvas.add(Color(1, 1, 1, 0))
-                    Rectangle(texture=text, pos=(self.offset_x - dp(18), py - text.size[1] / 2), size=text.size)
             stone_r = self.cell_size * 0.45
             for x in range(size):
                 for y in range(size):
@@ -317,7 +286,14 @@ class GoGameApp(App):
             ('设置', self.show_settings),
         ]
         for text, callback in btns:
-            btn = Button(text=text, font_size=dp(12), on_press=lambda b, c=callback: c())
+            def _safe_callback(c=callback):
+                def _wrapper(instance):
+                    try:
+                        c()
+                    except Exception as e:
+                        self._show_message('错误', str(e))
+                return _wrapper
+            btn = Button(text=text, font_size=dp(12), on_press=_safe_callback())
             btn_grid.add_widget(btn)
         root.add_widget(btn_grid)
         Clock.schedule_once(self._init_board, 0.1)
@@ -581,8 +557,17 @@ class GoGameApp(App):
         if not katago_path:
             self._show_message('提示', '请先在设置中配置Katago路径')
             return
+        if not os.path.isfile(katago_path):
+            self._show_message('错误', f'Katago文件不存在:\n{katago_path}')
+            return
+        self.status_label.text = '正在连接...'
+        t = threading.Thread(target=self._connect_engine_thread, daemon=True)
+        t.start()
+
+    def _connect_engine_thread(self):
         try:
-            self.engine = KataGoEngine(
+            katago_path = self.config.get('katago_path', '')
+            engine = KataGoEngine(
                 katago_path=katago_path,
                 config_path=self.config.get('config_path', ''),
                 model_path=self.config.get('model_path', ''),
@@ -590,17 +575,24 @@ class GoGameApp(App):
                 board_size=self.board.size,
                 komi=self.board.komi,
             )
-            self.engine.start()
-            self.engine_connected = True
-            self._sync_board_to_engine()
-            self._update_status()
-            self._show_message('成功', 'Katago引擎已连接')
-            if self.board.current_player == self.ai_color and not self.board.game_over:
-                self._request_ai_move()
+            engine.start()
+            Clock.schedule_once(lambda dt: self._on_engine_connected(engine), 0)
         except Exception as e:
-            self.engine_connected = False
-            self.engine = None
-            self._show_message('连接失败', f'无法连接Katago引擎:\n{e}')
+            Clock.schedule_once(lambda dt: self._on_engine_connect_failed(str(e)), 0)
+
+    def _on_engine_connected(self, engine):
+        self.engine = engine
+        self.engine_connected = True
+        self._sync_board_to_engine()
+        self._update_status()
+        if self.board.current_player == self.ai_color and not self.board.game_over:
+            self._request_ai_move()
+
+    def _on_engine_connect_failed(self, error):
+        self.engine = None
+        self.engine_connected = False
+        self._update_status()
+        self._show_message('连接失败', f'无法连接Katago引擎:\n{error}')
 
     def _disconnect_engine(self):
         if not self.engine_connected:

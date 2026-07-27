@@ -61,7 +61,18 @@ def get_katago_dir():
 
 def get_assets_dir():
     if is_android():
-        return '/data/data/org.example.gogame/files/app/assets/katago'
+        # python-for-android puts assets in the app directory
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        # Try multiple possible locations
+        candidates = [
+            os.path.join(script_dir, 'assets', 'katago'),
+            os.path.join(script_dir, 'assets'),
+            '/data/data/org.example.gogame/files/app/assets/katago',
+        ]
+        for c in candidates:
+            if os.path.isdir(c):
+                return c
+        return candidates[0]
     script_dir = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(script_dir, 'assets', 'katago')
 
@@ -92,7 +103,7 @@ def copy_assets_katago():
                 if not os.path.exists(dst) or os.path.getmtime(src) > os.path.getmtime(dst):
                     shutil.copy2(src, dst)
                     copied += 1
-                if item.startswith('katago') and not item.endswith('.cfg') and not item.endswith('.gz'):
+                if item.startswith('katago') and not item.endswith('.cfg') and not item.endswith('.gz') and not item.endswith('.txt'):
                     ensure_executable(dst)
     except Exception as e:
         return False, str(e)
@@ -104,13 +115,14 @@ def find_katago_executable():
     candidates = []
     if os.path.exists(katago_dir):
         for f in sorted(os.listdir(katago_dir)):
-            if f == 'README.txt' or f.endswith('.cfg') or f.endswith('.gz'):
+            if f == 'README.txt' or f.endswith('.cfg') or f.endswith('.gz') or f.endswith('.txt'):
                 continue
             full = os.path.join(katago_dir, f)
             if os.path.isfile(full):
                 candidates.append(full)
     extra_paths = [
         '/data/local/tmp/katago',
+        '/data/local/tmp/katago.bin',
         '/system/bin/katago',
     ]
     for p in extra_paths:
